@@ -1,0 +1,41 @@
+<!doctype html>
+<html ng-app="Clicker" ng-controller="AnswerSocketController as sender">
+	<head>
+		<title>Socket.IO chat</title>
+		<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+		<style>
+			body{
+				padding: 1em 6em;
+			}
+		</style>
+
+		<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
+		<script src="/socket.io/socket.io.js"></script>
+		<script>
+			angular.module('Clicker', []).controller('AnswerSocketController', function(){
+				var socket = io();
+
+				this.options = [
+					{letter:'A', option:'OPTIONS'},
+					{letter:'B', option:'GET'},
+					{letter:'C', option:'HEAD'},
+					{letter:'D', option:'PUT'},
+					{letter:'E', option:'POST'},
+					{letter:'F', option:'DELETE'}
+				];
+
+				this.send = function(selected){
+					console.log(selected);
+					socket.emit('answer', selected);
+				}
+			});
+		</script>
+	</head>
+	<body>
+		<h3><a href="/instructor">Instructor View</a></h3>
+		<h3>Which of the following methods aren't idempotent?</h3>
+		<div class="btn-group-vertical" role="group">
+			<button class="btn btn-lg btn-success" ng-click="sender.send(option.letter)" ng-repeat="option in sender.options">{{option.letter}}: {{option.option}}</button>
+		</div>
+	</body>
+</html>

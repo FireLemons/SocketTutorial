@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<head>
+	<meta charset="utf-8">
+	<style>
+		body{
+		    width:1060px;
+		    margin:50px auto;
+		}
+
+		path {
+			stroke: #fff;
+		}
+
+		path:hover {
+			opacity:0.9;
+		}
+
+		.axis {
+			font: 10px sans-serif;
+		}
+
+		.legend tr{
+			border-bottom:1px solid grey;
+		}
+
+		.legend tr:first-child{
+			border-top:1px solid grey;
+		}
+
+		.axis path, .axis line {
+			fill: none;
+			stroke: #000;
+			shape-rendering: crispEdges;
+		}
+
+		.x.axis path {
+			display: none;
+		}
+
+		.legend{
+		    margin-bottom:76px;
+		    display:inline-block;
+		    border-collapse: collapse;
+		    border-spacing: 0px;
+		}
+
+		.legend td{
+		    padding:4px 5px;
+			vertical-align:bottom;
+		}
+
+		.legendFreq, .legendPerc{
+		    align:right;
+		    width:50px;
+		}
+	</style>
+	<script src="http://d3js.org/d3.v3.min.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+	<div id='dashboard'></div>
+
+<script>
+    var answerData = [
+		{"option":"A","answered":0},
+		{"option":"B","answered":0},
+		{"option":"C","answered":0},
+		{"option":"D","answered":0},
+		{"option":"E","answered":0},
+		{"option":"F","answered":0}
+	];
+	var id = "#dashboard";
+	var barColor = 'steelblue';
+
+	function segColor(c){ 
+		return {A:"#807dba", B:"#e08214", C:"#41ab5d", D:"#e91e63", E:"#00bcd4", F:"#cddc39"}[c]; 
+	}
+    
+	// function to handle histogram.
+	function histoGram(fD){
+		var histogram={},
+			histogramDim = {t: 60, r: 0, b: 30, l: 0};
+			histogramDim.w = 500 - histogramDim.l - histogramDim.r, 
+			histogramDim.h = 300 - histogramDim.t - histogramDim.b;
+            
+		//create svg for histogram.
+		var histogramsvg = d3.select(id).append("svg")
+					.attr("width", histogramDim.w + histogramDim.l + histogramDim.r)
+					.attr("height", histogramDim.h + histogramDim.t + histogramDim.b).append("g")
+					.attr("transform", "translate(" + histogramDim.l + "," + histogramDim.t + ")");
+
+		// create function for x-axis mapping.
+		var x = d3.scale.ordinal()
+				.rangeRoundBands([0, histogramDim.w], 0.1)
+				.domain(fD.map(function(d){
+					return d.option;
+				}));
+
+		// Add x-axis to the histogram svg.
+		histogramsvg.append("g")
+			.attr("class", "x axis")
+			.attr("transform", "translate(0," + histogramDim.h + ")")
+			.call(d3.svg.axis().scale(x).orient("bottom"));
+
+		// Create function for y-axis map.
+		var y = d3.scale.linear().range([histogramDim.h, 0])
+				.domain([0, d3.max(fD, function(d) {
+					return d.answered;
+				})]);
+
+		// Create bars for histogram to contain rectangles and answered count labels.
+		var bars = histogramsvg.selectAll(".bar").data(fD).enter()
+				   .append("g").attr("class", "bar");
+        
+		//create the rectangles.
+		bars.append("rect")
+			.attr("x", function(d) {
+				return x(d.option);
+			})
+			.attr("y", function(d){
+				return y(d.answered);
+			})
+			.attr("width", x.rangeBand())
+			.attr("height", function(d){
+				return histogramDim.h - y(d.answered);
+			})
+			.attr('fill',barColor);
+			
+		//Create theanswered count labels above the rectangles.
+		bars.append("text")
+			.text(function(d){
+				return d3.format(",")(d.answered)
+			})
+			.attr("x", function(d){
+				return x(d.option)+x.rangeBand()/2;
+			})
+			.attr("y", function(d){
+				return y(d.answered)-5; 
+			})
+			.attr("text-anchor", "middle");
+
+			// Create function to update the bars. This will be used by pie-chart.
+			histogram.update = function(newData){
+				// Update the domain of the y-axis map to reflect change in answer count.
+				y.domain([0, d3.max(newData, function(d){
+					return d.answered;
+				})]);
+
+				// Attach the new data to the bars.
+				var bars = histogramsvg.selectAll(".bar").data(newData);
+
+				// Transition the height of rectangles.
+				bars.select("rect").transition().duration(500)
+					.attr("y", function(d){
+						return y(d.answered);
+					})
+					.attr("height", function(d){
+						return histogramDim.h - y(d.answered);
+					});
+
+				// Transition the answer count labels location and change value.
+				bars.select("text").transition().duration(500)
+					.text(function(d){ return d3.format(",")(d.answered)})
+					.attr("y", function(d){
+						return y(d.answered)-5;
+					});
+			}        
+		return histogram;
+	}
+    
+    // function to handle pieChart.
+    function pieChart(pD){
+        var pieChart ={},    pieDim ={w:250, h: 250};
+        pieDim.r = Math.min(pieDim.w, pieDim.h) / 2;
+                
+        // create svg for pie chart.
+        var piesvg = d3.select(id).append("svg")
+            .attr("width", pieDim.w).attr("height", pieDim.h).append("g")
+            .attr("transform", "translate("+pieDim.w/2+","+pieDim.h/2+")");
+        
+        // create function to draw the arcs of the pie slices.
+        var arc = d3.svg.arc().outerRadius(pieDim.r - 10).innerRadius(0);
+
+        // create a function to compute the pie slice angles.
+        var pie = d3.layout.pie().sort(null).value(function(d){
+			return d.answered;
+		});
+
+        // Draw the pie slices.
+        piesvg.selectAll("path").data(pie(pD)).enter().append("path").attr("d", arc)
+            .each(function(d) { this._current = d; })
+            .style("fill", function(d) { return segColor(d.data.option); });
+
+        // create function to update pie-chart. This will be used by histogram.
+        pieChart.update = function(newData){
+			piesvg.selectAll("path")
+				  .data(pie(newData))
+				  .transition().duration(500)
+				  .attrTween("d", arcTween);
+		}
+
+		function mouseout(d){
+            // call the update function of histogram with all data.
+            histogram.update(sF);
+        }
+        // Animating the pie-slice requiring a custom function which specifies
+        // how the intermediate paths should be drawn.
+        function arcTween(a) {
+            var i = d3.interpolate(this._current, a);
+            this._current = i(0);
+            return function(t) { return arc(i(t));    };
+        }
+    
+        return pieChart;
+    }
+    
+    // function to handle legend.
+    function legend(lD){
+        var leg = {};
+        // create table for legend.
+        var legend = d3.select(id).append("table").attr('class','legend');
+        
+        // create one row per segment.
+        var tr = legend.append("tbody").selectAll("tr").data(lD).enter().append("tr");
+            
+        // create the first column for each segment.
+        tr.append("td").append("svg").attr("width", '16').attr("height", '16').append("rect")
+            .attr("width", '16').attr("height", '16')
+			.attr("fill",function(d){ return segColor(d.option); });
+            
+        // create the second column for each segment.
+        tr.append("td").text(function(d){ return d.option;});
+
+        // create the third column for each segment.
+        tr.append("td").attr("class",'legendFreq')
+            .text(function(d){
+				return d3.format(",")(d.answered);
+			});
+
+        // create the fourth column for each segment.
+        tr.append("td").attr("class",'legendPerc')
+            .text(function(d){ return getLegend(d,lD);});
+
+        // Utility function to be used to update the legend.
+        leg.update = function(newData){
+            // update the data attached to the row elements.
+            var l = legend.select("tbody").selectAll("tr").data(newData);
+
+            // update the answer count.
+			l.select(".legendFreq").text(function(d){
+				return d3.format(",")(d.answered);
+			});
+
+            // update the percentage column.
+			l.select(".legendPerc").text(function(d){
+				return getLegend(d,newData);
+			});
+		}
+        
+        function getLegend(d,aD){ // Utility function to compute percentage.
+            return d3.format("%")(d.answered/d3.sum(aD.map(function(v){
+				return v.answered;
+			})));
+        }
+
+        return leg;
+    }
+
+	function update(){
+		histogram.update(answerData);
+		pieChart.update(answerData);
+		leg.update(answerData);
+	}
+    
+	var histogram = histoGram(answerData), // create the histogram.
+		pieChart = pieChart(answerData), // create the pie-chart.
+		leg = legend(answerData);  // create the legend.
+
+	var socket = io();
+
+	socket.on('answered', function(answer){
+		answerData.filter(function(element){
+			return element.option === answer;
+		})[0].answered += 1;
+
+		update();
+	});
+</script>
